@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom Stock Ticker</title>
+    <style>
+        body {
+            background-color: #2c2c2c;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        .marquee {
+            width: 100%;
+            background-color: #444;
+            color: #fff;
+            overflow: hidden;
+            white-space: nowrap;
+            box-sizing: border-box;
+        }
+        .marquee span {
+            display: inline-block;
+            padding-left: 100%;
+            animation: marquee 15s linear infinite;
+        }
+        @keyframes marquee {
+            from { transform: translate(0, 0); }
+            to { transform: translate(-100%, 0); }
+        }
+        .container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            padding: 20px;
+        }
+        .widget {
+            width: 100%;
+            height: 375px; /* Increased height for better readability */
+        }
+        .ranking {
+            margin-top: 20px;
+            text-align: left; /* Align the container to the left */
+        }
+        .ranking h2 {
+            position: absolute; /* Position the h2 element absolutely */
+            top: 815px; /* Set the y position */
+            left: 350px; /* Set the x position */
+        }
+        .ranking table {
+            width: 50%; /* Adjust table width as needed */
+            border-collapse: collapse;
+            margin: 10;
+            float: left; /* Align the table to the left */
+            margin-top: 30px;
+        }
+        .ranking th, .ranking td {
+            padding: 10px;
+            text-align: left; /* Ensure text is left-aligned */
+            border: 1px solid #555;
+        }
+        .ranking th {
+            background-color: #444;
+        }
+        .positive {
+            background-color: #4caf50; /* Green for positive change */
+            color: #fff;
+        }
+        .negative {
+            background-color: #f44336; /* Red for negative change */
+            color: #fff;
+        }
+        .date-time {
+            position: absolute;
+            color: #aaa;
+            font-size: 60px; /* Make the text larger */
+            top: 900px; /* Set the y position */
+            left: 1600px; /* Set the x position */
+        }
+        .date-time span {
+            display: block;
+        }
+        .total-change {
+            position: absolute;
+            color: #aaa;
+            font-size: 50px; /* Make the text larger */
+            top: 925px; /* Set the y position */
+            left: 1040px; /* Set the x position */
+            padding: 10px 20px;
+            border-radius: 15px; /* Roundish border */
+            background-color: #333;
+            border: 2px solid #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="marquee">
+        <span id="marquee-content"></span>
+    </div>
+    <div class="container">
+        <div class="widget" id="widget1"></div>
+        <div class="widget" id="widget2"></div>
+        <div class="widget" id="widget3"></div>
+        <div class="widget" id="widget4"></div>
+        <div class="widget" id="widget5"></div>
+        <div class="widget" id="widget6"></div>
+    </div>
+
+    <div class="ranking">
+        <h2>Your Top 10 Stocks</h2>
+        <table>
+            <tbody id="ranking-list"></tbody>
+        </table>
+        <div class="date-time" id="date-time">
+            <span id="date"></span>
+            <span id="time"></span>
+        </div>
+        <div class="total-change" id="total-change"></div>
+    </div>
+
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script type="text/javascript">
+        const apiKey = '82365da60c1cd3e1f70421694dccfa1148c97801'; // Replace with your Tiingo API key
+        const stockGroups = [
+            ['AAPL', 'GOOG', 'MSFT', 'AMZN', 'META', 'TSLA'],
+            ['BABA', 'NVDA', 'PYPL', 'ADBE', 'INTC', 'CSCO'],
+            ['PEP', 'KO', 'DIS', 'NFLX', 'V', 'MA']
+        ];
+
+        let currentGroupIndex = 0;
+
+        function loadStocks(groupIndex) {
+            const stocks = stockGroups[groupIndex].map(symbol => `${symbol}`);
+            stocks.forEach((stock, index) => {
+                new TradingView.widget({
+                    "width": "100%",
+                    "height": "375",
+                    "symbol": stock,
+                    "interval": "D",
+                    "timezone": "Etc/UTC",
+                    "theme": "dark",
+                    "style": "1",
+                    "locale": "en",
+                    "toolbar_bg": "#f1f3f6",
+                    "enable_publishing": false,
+                    "allow_symbol_change": true,
+                    "container_id": `widget${index + 1}`
+                });
+            });
+        }
+
+        function cycleStocks() {
+            loadStocks(currentGroupIndex);
+            currentGroupIndex = (currentGroupIndex + 1) % stockGroups.length;
+        }
+
+        cycleStocks();
+        setInterval(cycleStocks, 150000);
+
+        async function fetchStockData(symbol) {
+            try {
+                const response = await fetch(`https://api.tiingo.com/iex/?tickers=${symbol}&token=${apiKey}`);
+                const data = await response.json();
+                if (data && data.length > 0) {
+                    const currentPrice = data[0].last;
+                    const openPrice = data[0].open;
+                    const change = currentPrice - openPrice;
+                    return { symbol, change: parseFloat(change.toFixed(2)) };
+                } else {
+                    throw new Error(`No data for ${symbol}`);
+                }
+            } catch (error) {
+                console.error(`Error fetching data for ${symbol}:`, error.message);
+                return { symbol, change: 0 };
+            }
+        }
+
+        async function fetchAndRankStocks() {
+            const allStocks = stockGroups.flat();
+            const stockDataPromises = allStocks.map(fetchStockData);
+            const stockData = await Promise.all(stockDataPromises);
+
+            const top10Stocks = stockData.sort((a, b) => b.change - a.change).slice(0, 10);
+            const rankingList = document.getElementById('ranking-list');
+            rankingList.innerHTML = '';
+
+            let totalChange = 0;
+
+            for (let i = 0; i < 5; i++) {
+                const row = document.createElement('tr');
+
+                const stock1 = top10Stocks[i * 2];
+                const cell1 = document.createElement('td');
+                cell1.className = stock1.change >= 0 ? 'positive' : 'negative';
+                cell1.innerHTML = `${i * 2 + 1}. ${stock1.symbol} - ${stock1.change}$`;
+                totalChange += stock1.change;
+
+                const stock2 = top10Stocks[i * 2 + 1];
+                const cell2 = document.createElement('td');
+                cell2.className = stock2.change >= 0 ? 'positive' : 'negative';
+                cell2.innerHTML = `${i * 2 + 2}. ${stock2.symbol} - ${stock2.change}$`;
+                totalChange += stock2.change;
+
+                row.appendChild(cell1);
+                row.appendChild(cell2);
+                rankingList.appendChild(row);
+            }
+
+            const totalChangeElement = document.getElementById('total-change');
+            totalChangeElement.textContent = `Total Change: ${totalChange.toFixed(2)}$`;
+            totalChangeElement.style.color = totalChange >= 0 ? '#4caf50' : '#f44336';
+
+            // Update the marquee with all 18 stocks
+            updateMarquee(stockData);
+        }
+
+        fetchAndRankStocks();
+        setInterval(fetchAndRankStocks, 1800000);
+
+        function updateDateTime() {
+            const now = new Date();
+            const date = now.toLocaleDateString();
+            const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            document.getElementById('date').textContent = date;
+            document.getElementById('time').textContent = time;
+        }
+
+        updateDateTime();
+        setInterval(updateDateTime, 60000);
+
+        function updateMarquee(stocks) {
+            const marqueeContent = stocks.map(stock => `${stock.symbol} : ${stock.change}$`).join(' | ');
+            document.getElementById('marquee-content').textContent = marqueeContent;
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
